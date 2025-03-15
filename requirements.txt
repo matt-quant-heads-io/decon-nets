@@ -1,0 +1,9 @@
+stable-baselines3[extra]
+gym
+torch
+np_utils
+'shimmy>=2.0'
+einops
+wandb
+seaborn
+torchvision
