@@ -1,6 +1,6 @@
 from gym_pcgrl.envs.reps.representation import Representation
 from PIL import Image
-from gym import spaces
+from gymnasium import spaces
 import numpy as np
 
 """

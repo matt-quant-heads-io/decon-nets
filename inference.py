@@ -1,74 +1,35 @@
 """
 Run a trained agent and get generated maps
 """
-import json
-import model
-
-from utils import make_env, make_vec_envs
 import os
-import argparse
-import torch as th
-import pathlib
-# from sl_model import CNN
-# from gen_pod_traj import transform
-
-from gym_pcgrl.envs.pcgrl_env import PcgrlEnv
-from gym_pcgrl.envs.probs.loderunner_prob import LRProblem
-from gym_pcgrl.envs.probs.zelda_prob import ZeldaProblem
-from model import CustomActorCriticPolicy, CustomCNNFeatureExtractor, WrappedNetwork
-from model import CustomPPO
-import numpy as np
 
 import torch
 from tqdm import tqdm
-from einops import rearrange
-import torch.nn as nn
-import json
-import torch as th
 import numpy as np
 
-# import utils
-
-import torch.nn.functional as F
-from utils import make_vec_envs as mkvenv
-
-
-
-PROJECT_ROOT = os.getenv("PROJECT_ROOT")
-if not PROJECT_ROOT:
-    raise RuntimeError("The env var `PROJECT_ROOT` is not set.")
 
 DOMAIN_TO_INT_TILE_MAP = {
     "empty": 0,
-    "brick": 1, 
-    "ladder": 2, 
-    "rope": 3, 
-    "solid": 4, 
-    "gold": 5, 
-    "enemy": 6, 
-    "player": 7
+    "solid": 1,
+    "player": 2,
+    "key": 3,
+    "door": 4,
+    "bat": 5,
+    "scorpion": 6,
+    "spider": 7
 }
-DOMAIN_TO_CHAR_TO_STR_TILE_MAP =  {
-    ".":"empty",
-    "b":"brick", 
-    "#":"ladder", 
-    "-":"rope", 
-    "B":"solid", 
-    "G":"gold", 
-    "E":"enemy", 
-    "M":"player"
+DOMAIN_TO_CHAR_TO_STR_TILE_MAP = {
+    "g": "door",
+    "+": "key",
+    "A": "player",
+    "1": "bat",
+    "2": "spider",
+    "3": "scorpion",
+    "w": "solid",
+    ".": "empty"
 }
 
-REV_TILES_MAP = {
-    "door": "g",
-    "key": "+",
-    "player": "A",
-    "bat": "1",
-    "spider": "2",
-    "scorpion": "3",
-    "solid": "w",
-    "empty": ".",
-}    
+REV_TILES_MAP = {v:k for k,v in DOMAIN_TO_CHAR_TO_STR_TILE_MAP.items()}
 
 def str_arr_from_int_arr(map, str_to_int_map):
     translation_map = {v: k for k, v in str_to_int_map.items()}
@@ -104,7 +65,6 @@ def convert_str_map_to_int_map(state, str_to_int_tiles_map):
         for col_i, col in enumerate(row):
             int_map.append(str_to_int_tiles_map[col])
 
-    # import pdb; pdb.set_trace()
     return np.array(int_map).reshape(*state.shape)
 
 
@@ -135,170 +95,193 @@ def convert_from_env_obs_to_model_obs(obs, x, y, obs_size, int_to_str_tiles_map,
     return img
 
 
+def convert_char_maps_to_int_maps(char_maps_list):
+    all_levels = []
+    for char_map in char_maps_list:
+        all_levels.append(np.array([DOMAIN_TO_INT_TILE_MAP[DOMAIN_TO_CHAR_TO_STR_TILE_MAP[char]] for char in char_map]))
 
-def infer(game, representation, experiment, **kwargs):
-    """
-     - max_trials: The number of trials per evaluation.
-     - infer_kwargs: Args to pass to the environment.
-    """
-    env_name = '{}-{}-v0'.format(game, representation)
-    if game == "binary":
-        # model.FullyConvPolicy = model.FullyConvPolicyBigMap
-        kwargs['cropped_size'] = 28
-    elif game == "zelda":
-        # model.FullyConvPolicy = model.FullyConvPolicyBigMap
-        kwargs['cropped_size'] = 22
-    elif game == "sokoban":
-        # model.FullyConvPolicy = model.FullyConvPolicySmallMap
-        kwargs['cropped_size'] = 10
-    elif game == "loderunner":
-        kwargs['cropped_size'] = 64
+    return np.array(all_levels)
 
-    kwargs['render'] = True
+def get_int_maps_from_char_maps_paths(list_of_paths_to_char_maps):
+    def to_2d_array_level(file_name, tiles_map):
+        level = []
 
-    # env = make_vec_envs(env_name, representation, None, 1, **kwargs)
-    # import pdb; pdb.set_trace()
-    # device = "cpu"
+        with open(file_name, "r") as f:
+            rows = f.readlines()
+            for row in rows:
+                new_row = []
+                for char in row:
+                    if char != "\n":
+                        new_row.append(tiles_map[char])
+                level.append(new_row)
 
-    # env = PcgrlEnv(prob="loderunner", rep="narrow")
-    # prob_obj = LRProblem()
-
-    # data = np.load("/home/jupyter-msiper/bootstrapping-pcgrl/data/loderunner/pod_trajs_2025-01-11 19:56:45.897043.npz")
-    # start_state = data["obs"].astype(np.float32)[0]
-    # int_state = convert_onehot_map_to_int_map(start_state)
-    int_to_str_map = {v:k for k,v in DOMAIN_TO_INT_TILE_MAP.items()}
-    # str_map = convert_int_map_to_str_map(int_state, int_to_str_map)
+        return level
     
-    # print(f"obs: {obs.shape}")
-    # obs = env.reset()['map']
-    # dt_obs = convert_from_env_obs_to_model_obs(env._rep._map, env._rep._x, env._rep._y, (64, 64, 8), int_to_str_map, prob_obj)
-    kwargs = {
-        **kwargs,
-        'render_rank': 0,
-        'render': False,
-        "change_percentage": 3.0,
-        "trials": 1000,
-        "verbose": True,
-        "experiment": "supervised_training"
-    }
-    prob_obj = ZeldaProblem()
-    env = mkvenv("zelda-narrow-v0", "narrow", None, 1, **kwargs)
-    policy_kwargs = dict(
-        features_extractor_class=CustomCNNFeatureExtractor,
-        features_extractor_kwargs=dict(features_dim=256),
-    )
-    # model = CustomPPO(CustomActorCriticPolicy, env=env, policy_kwargs=policy_kwargs, verbose=2, exp_path=f"./experiments/{game}/supervised_training", device = "cuda" if torch.cuda.is_available() else "cpu")
-    model = CustomPPO(CustomActorCriticPolicy, env=env, policy_kwargs=policy_kwargs, verbose=2, exp_path=f"./experiments/{game}/supervised_training", device = "cpu")
-    model.load_supervised_weights(
-        f"/home/jupyter-msiper/bootstrapping-rl/experiments/zelda/supervised_training/feature_extractor.pth",
-        f"/home/jupyter-msiper/bootstrapping-rl/experiments/zelda/supervised_training/mlp_extractor.pth",
-        f"/home/jupyter-msiper/bootstrapping-rl/experiments/zelda/supervised_training/action_net.pth",
-        f"/home/jupyter-msiper/bootstrapping-rl/experiments/zelda/supervised_training/value_net.pth",
+    def int_arr_from_str_arr(map, int_arr_from_str_arr):
+        int_map = []
+        for row_idx in range(len(map)):
+            new_row = []
+            for col_idx in range(len(map[0])):
+                new_row.append(int_arr_from_str_arr[map[row_idx][col_idx]])
+            int_map.append(new_row)
+        return int_map 
 
-    )
-    model.policy.eval()
-    # model.save("/home/jupyter-msiper/bootstrapping-rl/experiments/zelda/supervised_training/model.zip")
-    # model = CustomPPO.load("/home/jupyter-msiper/bootstrapping-rl/experiments/zelda/supervised_training/model.zip")
-    # obs_space = env.__dict__['envs'][0].env.observation_space
-    # action_space = env.__dict__['envs'][0].env.action_space
-    # slmodel = WrappedNetwork(obs_space, action_space, 1, features_dim=256, last_layer_dim_pi=256, last_layer_dim_vf=256)
+    return [int_arr_from_str_arr(to_2d_array_level(p, DOMAIN_TO_CHAR_TO_STR_TILE_MAP), DOMAIN_TO_INT_TILE_MAP) for p in list_of_paths_to_char_maps]
+
+
+def calc_diversity(test_lvls, goal_lvls, cuttoff):
+    def hamm_dist(lvl1, lvl2):
+        value = np.abs(lvl1.flatten() - lvl2.flatten())
+        value[value > 0] = 1
+        return value.sum()
+        
+    def direction_diversity(lvls, goals, distfn=hamm_dist):
+        dists = []
+        lvls = np.array(lvls)
+        goals = np.array(goals)
+        for lvl in lvls:
+            min_dist = -1
+            for goal in goals:
+                new_dist = distfn(lvl, goal)
+                if min_dist < 0 or new_dist < min_dist:
+                    min_dist = new_dist
+            dists.append(min_dist)
+        return np.array(dists)
+
+    def get_subset_diversity(lvls, goal, cuttoff, distfn=hamm_dist):
+        dists = direction_diversity(lvls, goal, distfn)
+        import pdb; pdb.set_trace()
+        return lvls[dists >= cuttoff]
+
+    def greedy_set_diversity(lvls, cuttoff, distfn=hamm_dist):
+        indeces = set()
+        for i,lvl in enumerate(tqdm(lvls, leave=False)):
+            if i in indeces:
+                continue
+            values = direction_diversity(lvls, [lvl], distfn)
+            temp = np.where(values < cuttoff)[0]
+            if len(temp) > 1:
+                temp = temp[temp > i]
+                indeces.update(temp)
+        return np.delete(lvls, list(indeces), axis=0)
+
+
+    def ogreedy_set_diversity(lvls, cuttoff, distfn=hamm_dist):
+        extra_info = []
+        repeat = np.zeros(len(lvls))
+        for i,lvl in enumerate(tqdm(lvls, leave=False, desc="Sorting By Repeatition")):
+            values = direction_diversity(lvls, [lvl], distfn)
+            values[i] = 10000
+            repeat[i] = (values < cuttoff).sum()
+            
+            temp_info = {}
+            temp_info['cuttoff'] = (values < cuttoff).sum()
+            temp_info['worse'] = values.min()
+            temp_info['identical'] = (values == 0).sum()
+            temp_info['worse_identical'] = (values == temp_info['worse']).sum()
+            extra_info.append(temp_info)
+        return greedy_set_diversity(lvls[repeat.argsort()], cuttoff, distfn), extra_info
+
+    unique_goal_lvls = get_subset_diversity(test_lvls, goal_lvls, cuttoff)
+    div_wrt_goal = len(unique_goal_lvls) / len(test_lvls)
+
+    unique_ogreedy_lvls, extra = ogreedy_set_diversity(test_lvls, cuttoff)
+    div_wrt_internal = len(unique_ogreedy_lvls) / len(test_lvls)
+
+    mean_div = (div_wrt_goal + div_wrt_internal) / 2
+    return mean_div
+
+
+def infer(network, env, **kwargs):
+    """
+    Run inference using a trained network on the given environment.
     
-    # #
-    # slmodel.load_state_dict(torch.load("/home/jupyter-msiper/bootstrapping-rl/experiments/zelda/supervised_training/sl_policy.pth", weights_only=True, map_location=torch.device('cpu')))
-    # slmodel.eval()
-    # import pdb; pdb.set_trace()
-    # str_arr_from_int_arr()
-    # import pdb; pdb.set_trace()
-    obs = env.reset()
-    # import pdb; pdb.set_trace()
-
-    dones = False
+    Args:
+        network: The trained neural network model
+        env: The environment to run inference on
+        **kwargs: Additional arguments including:
+            - trials: Number of trials to run
+            - verbose: Whether to print progress
+    
+    Returns:
+        tuple: (solve_percentage, diversity_score)
+    """
     solved = 0
     unsolved = 0
     rewards = []
-    results = {"solved_maps": [], 'num_boostrap_episodes': [], 'train_process': [], 'num_ppo_timesteps': [], 'num_boostrap_epochs': [], 'bootstrap_total_time': [], 'ppo_total_time': [], 'total_train_time': []}
-    for i in range(kwargs.get('trials', 1)):
-        while not dones:
-            # obs = convert_from_env_obs_to_model_obs(obs, env.__dict__['envs'][0].env.pcgrl_env.env.env._rep._x, env.__dict__['envs'][0].env.pcgrl_env.env.env._rep._y, (22, 22, 8), int_to_str_map, prob_obj)
-                
-            # import pdb; pdb.set_trace()
-            # output = model.predict(torch.argmax(torch.from_numpy(obs),dim=3).reshape(22,22))
-            output, _ = model.policy.predict(torch.from_numpy(obs))
+    solved_maps = []
+    entropies_per_trial = []
+    
+    trials = kwargs.get('trials', 1)
+    verbose = kwargs.get('verbose', False)
+    cuttoff = kwargs.get('div_cutoff', 0.10)
+    goal_map_path = kwargs.get('goal_map_path', None)
+    
+    obs_pos_dict, info = env.unwrapped.reset() 
+    y, x = obs_pos_dict['pos'] 
+    y, x = y.item(), x.item()
+    obs = obs_pos_dict['map'] 
+    
+    dones = False
+    network.network.eval()
 
+
+    for i in range(trials):
+        entropy_per_trial = []
+        while not dones:
+            output, entropy = network.policy.predict(torch.from_numpy(obs), x, y)
             action = output.item()
-            # print(f"action: {action}")
-                # print(f"output: {output}")
-            obs, _, dones, info = env.step([action+1])
-            # import pdb; pdb.set_trace()
-            if kwargs.get('verbose', False):
-                pass
-            # print(f"info: {info}")
+
+            entropy_per_trial.append(entropy)
+            
+            next_obs_pos_dict, reward, dones, truncated, info = env.step(action)
+            y, x = next_obs_pos_dict['pos']
+            x, y, = x.item(), y.item()   
+            
             if dones:
-                if info[0]["solved"]:
-                    # import pdb; pdb.set_trace()
+                if info["solved"]:
                     solved += 1
-                    solved_pct = round(float(solved) / (float(solved)+float(unsolved)),2)*100
-                    print("Solve %: {solved_pct} Solved {solved}, Unsolved: {unsolved}".format(solved_pct=solved_pct, solved=solved, unsolved=unsolved))
-                    reward = info[0]["reward"]
+                    solved_pct = round(float(solved) / (float(solved) + float(unsolved)), 2) * 100
+                    reward = info["reward"]
                     rewards.append(reward)
                     
-                    print("Mean reward: {reward}".format(reward=sum(rewards)/len(rewards)))
-                    char_map = str_map_to_char_map(info[0]["final_map"])
-                    results["solved_maps"].append(char_map)
-                    results["num_boostrap_episodes"].append(0)
-                    results["num_ppo_timesteps"].append(0)
-                    results["train_process"].append(0)
-                    results["num_boostrap_epochs"].append(0)
-                    results["bootstrap_total_time"].append(0)
-                    results["ppo_total_time"].append(0)
-                    results["total_train_time"].append(0)
+                    if verbose:
+                        print(f"Solve %: {solved_pct} Solved {solved}, Unsolved: {unsolved}")
+                        print(f"Mean reward: {sum(rewards)/len(rewards)}")
+                    
+                    char_map = str_map_to_char_map(info["final_map"])
+                    solved_maps.append(char_map)
                 else:
                     unsolved += 1
-                    solved_pct = round(float(solved) / (float(solved)+float(unsolved)),2)*100
-                    print("Solve %: {solved_pct} Solved {solved}, Unsolved: {unsolved}".format(solved_pct=solved_pct, solved=solved, unsolved=unsolved))
+                    if verbose:
+                        solved_pct = round(float(solved) / (float(solved) + float(unsolved)), 2) * 100
+                        print(f"Solve %: {solved_pct} Solved {solved}, Unsolved: {unsolved}")
                 break
+                
         dones = False
-        obs = env.reset()
-        # os.system(f"chmod 777 {experiment_path}/inference_results.json".format(experiment_path=kwargs['experiment_path']))
-        # with open(kwargs['experiment_path']+"/inference_results.json", "w") as f:
-        #     f.write(json.dumps(results))
-        # time.sleep(0.2)
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(
-        prog='Inference script',
-        description='This is the inference script for evaluating agent performance'
-    )
-    parser.add_argument('--game', '-g', choices=['zelda', 'loderunner'], default="zelda") 
-    parser.add_argument('--representation', '-r', default='narrow')
-    parser.add_argument('--results_path', default="ppo_100M_steps")
-    parser.add_argument('--experiment', default="1", type=str)
-    parser.add_argument('--chg_pct', default=3.0, type=float)
-    parser.add_argument('--trials', default=500, type=int)
-    parser.add_argument('--verbose', default=True, type=bool)
-
-    return parser.parse_args()
-
-
-################################## MAIN ########################################
-if __name__ == '__main__':
-    args = parse_args()
-    game = args.game 
-    representation = args.representation
+        obs_pos_dict, info = env.unwrapped.reset() 
+        y, x = obs_pos_dict['pos'] 
+        y, x = y.item(), x.item()
+        obs = obs_pos_dict['map'] 
+        entropies_per_trial.append(sum(entropy_per_trial)/len(entropy_per_trial))
     
-    experiment_path = "./experiments/" + args.game + "/" + args.experiment + "/inference_results"
-    experiment_filepath = pathlib.Path(experiment_path)
-    if not experiment_filepath.exists():
-        os.makedirs(str(experiment_filepath))
+    # Calculate final metrics
+    goal_maps_path = "/home/jupyter-msiper/decon-nets/goal_maps/zelda"
+    list_of_paths_to_char_maps = [f"{goal_maps_path}/{gmap}" for gmap in os.listdir(goal_maps_path) if gmap.endswith(".txt")]
+    goal_maps_as_int = get_int_maps_from_char_maps_paths(list_of_paths_to_char_maps)
+    solve_percentage = round(float(solved) / float(trials) * 100, 2)
+    mean_entropy = sum(entropies_per_trial) / len(entropies_per_trial)
 
-    
-    kwargs = {
-        'change_percentage': args.chg_pct,
-        'trials': args.trials,
-        'verbose': args.verbose,
-        'experiment_path': experiment_path
-    }
+    if len(solved_maps) == 0:
+        return solve_percentage, 0.0, mean_entropy
+ 
+    # import pdb; pdb.set_trace()
+    solved_maps_as_int = convert_char_maps_to_int_maps(solved_maps)
+
+    diversity_score = calc_diversity(np.array(goal_maps_as_int), np.array(solved_maps_as_int), cuttoff) 
     
     
-    infer(game, representation, args.experiment, **kwargs)
+    return solve_percentage, diversity_score, mean_entropy
+
+
+

@@ -1,6 +1,7 @@
-from gym.utils import seeding
+from gymnasium.utils import seeding
 from gym_pcgrl.envs.helper import gen_random_map
 import random
+import numpy as np
 
 """
 The base class of all the representations
@@ -13,6 +14,9 @@ class Representation:
         self._random_start = True
         self._map = None
         self._old_map = None
+        self._random = None
+        self._x = 0
+        self._y = 0
 
         self.seed()
 
@@ -38,22 +42,66 @@ class Representation:
         width (int): the generated map width
         height (int): the generated map height
         prob (dict(int,float)): the probability distribution of each tile value
+        target_map (str, optional): path to the target map file
     """
-    def reset(self, width, height, prob):
-        if self._random_start or self._old_map is None:
+    def reset(self, width, height, prob, target_map=None):
+        if target_map:
+            # Load the target map from file
+            with open(target_map, 'r') as f:
+                lines = f.readlines()
+            
+            # Remove empty lines and strip whitespace
+            lines = [line.strip() for line in lines if line.strip()]
+            
+            # Create numpy array for the map
+            h = len(lines)
+            w = len(lines[0])
+            self._map = np.zeros((h, w), dtype=np.uint8)
+            
+            # Character to int mapping for Zelda
+            char_to_int = {
+                '.': 0,  # empty
+                'w': 1,  # wall
+                'g': 2,  # goal
+                '+': 3,  # key
+                'A': 4,  # agent
+                '1': 5,  # enemy 1
+                '2': 6,  # enemy 2
+                '3': 7   # enemy 3
+            }
+            
+            # Convert characters to integers
+            for i, line in enumerate(lines):
+                for j, char in enumerate(line):
+                    self._map[i][j] = char_to_int.get(char, 0)
+        elif self._random_start:
             self._map = gen_random_map(self._random, width, height, prob)
-            self._old_map = self._map.copy()
         else:
-            self._map = self._old_map.copy()
+            self._map = np.zeros((height, width), dtype=np.uint8)
+        self._old_map = self._map.copy()
 
     """
-    Adjust current representation parameter
+    Adjust the current used parameters
 
     Parameters:
-        random_start (boolean): if the system will restart with a new map or the previous map
+        random_start (boolean): if the system will restart with a random map or not
+        x (int): the x position of the current tile being modified
+        y (int): the y position of the current tile being modified
+        map (numpy.ndarray): the current map state
+        old_map (numpy.ndarray): the previous map state
     """
     def adjust_param(self, **kwargs):
         self._random_start = kwargs.get('random_start', self._random_start)
+        self._x = kwargs.get('x', self._x)
+        self._y = kwargs.get('y', self._y)
+        
+        map = kwargs.get('map')
+        if map is not None:
+            self._map = map.copy()
+            
+        old_map = kwargs.get('old_map')
+        if old_map is not None:
+            self._old_map = old_map.copy()
 
     """
     Gets the action space used by the representation

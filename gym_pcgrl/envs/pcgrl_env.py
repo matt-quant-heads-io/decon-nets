@@ -2,10 +2,8 @@ from gym_pcgrl.envs.probs import PROBLEMS
 from gym_pcgrl.envs.reps import REPRESENTATIONS
 from gym_pcgrl.envs.helper import get_int_prob, get_string_map
 import numpy as np
-import gym
-# import gymnasium as gym
-from gym import spaces
-# from gymnasium import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import PIL
 
 """
@@ -15,7 +13,7 @@ class PcgrlEnv(gym.Env):
     """
     The type of supported rendering
     """
-    metadata = {'render.modes': ['human', 'rgb_array']}
+    metadata = {'render_modes': ['human', 'rgb_array']}
 
     """
     Constructor for the interface.
@@ -33,16 +31,53 @@ class PcgrlEnv(gym.Env):
         self._rep_stats = None
         self._iteration = 0
         self._changes = 0
-        self._max_changes = max(int(self._prob._width * self._prob._height), 1) #max(int(0.2 * self._prob._width * self._prob._height), 1)
-        self._max_iterations = self._prob._width * self._prob._height*2#self._max_changes * self._prob._width * self._prob._height*2
+        self._max_changes = max(int(self._prob._width * self._prob._height), 1)
+        self._max_iterations = self._prob._width * self._prob._height*2
         self._heatmap = np.zeros((self._prob._height, self._prob._width))
 
         self.seed()
         self.viewer = None
 
+        self.action_space = self._rep.get_action_space(self._prob._width, self._prob._height, len(self._prob.get_tile_types()))
+        self.observation_space = self._rep.get_observation_space(self._prob._width, self._prob._height, len(self._prob.get_tile_types()))
+
+    """
+    Get the number of tile types in the current problem
+
+    Returns:
+        int: the number of tile types
+    """
+    def get_num_tiles(self):
+        return len(self._prob.get_tile_types())
+
+    """
+    Adjust the parameters for the current environment
+
+    Parameters:
+        **kwargs: Arbitrary keyword arguments that will be passed to the problem's adjust_param method.
+                 Common parameters include:
+                 - change_percentage (float): percentage of tiles that can be changed (0-1)
+                 - width (int): change the width of the problem level
+                 - height (int): change the height of the problem level
+                 - probs (dict(string, float)): change the probability of each tile initialization
+                 - border_size (tuple(int, int)): change the border size of the level
+                 - border_tile (string): change the border tile type
+                 - tile_size (int): change the size of each tile in pixels
+    """
+    def adjust_param(self, **kwargs):
+        if 'change_percentage' in kwargs:
+            percentage = min(1, max(0, kwargs.get('change_percentage')))
+            self._max_changes = max(int(percentage * self._prob._width * self._prob._height), 1)
+        self._max_iterations = self._max_changes * self._prob._width * self._prob._height
+        
+        # Pass parameters to problem and representation
+        self._prob.adjust_param(**kwargs)
+        self._rep.adjust_param(**kwargs)
+        
+        # Update action and observation spaces
         self.action_space = self._rep.get_action_space(self._prob._width, self._prob._height, self.get_num_tiles())
         self.observation_space = self._rep.get_observation_space(self._prob._width, self._prob._height, self.get_num_tiles())
-        self.observation_space.spaces['heatmap'] = spaces.Box(low=0, high=self._max_changes, dtype=np.uint32, shape=(self._prob._height, self._prob._width))
+        self.observation_space.spaces['heatmap'] = spaces.Box(low=0, high=self._max_changes, dtype=np.uint8, shape=(self._prob._height, self._prob._width))
 
     """
     Seeding the used random variable to get the same result. If the seed is None,
@@ -52,82 +87,56 @@ class PcgrlEnv(gym.Env):
         seed (int): the starting seed, if it is None a random seed number is used.
 
     Returns:
-        int[]: An array of 1 element (the used seed)
+        int: the used seed (same as input if not None)
     """
     def seed(self, seed=None):
-        seed = self._rep.seed(seed)
-        self._prob.seed(seed)
+        self._rep.seed(seed)
+        seed = self._prob.seed(seed)
         return [seed]
 
     """
     Resets the environment to the start state
 
     Returns:
-        Observation: the current starting observation have structure defined by
-        the Observation Space
+        Observation: the current starting observation
     """
-    def reset(self):
+    def reset(self, *, seed=None, options=None, target_map=None):
+        if seed is not None:
+            self.seed(seed)
+            
         self._changes = 0
         self._iteration = 0
-        self._rep.reset(self._prob._width, self._prob._height, get_int_prob(self._prob._prob, self._prob.get_tile_types()))
+        self._rep.reset(self._prob._height, self._prob._width, get_int_prob(self._prob._prob, self._prob.get_tile_types()), target_map=target_map)
         self._rep_stats = self._prob.get_stats(get_string_map(self._rep._map, self._prob.get_tile_types()))
         self._prob.reset(self._rep_stats)
         self._heatmap = np.zeros((self._prob._height, self._prob._width))
-
+        
         observation = self._rep.get_observation()
-        observation["heatmap"] = self._heatmap.copy()
-        return observation
+        # observation['heatmap'] = self._heatmap
+        info = {}
+        
+        return observation, info
 
     """
     Get the border tile that can be used for padding
 
     Returns:
-        int: the tile number that can be used for padding
+        int: the tile value that can be used for padding
     """
     def get_border_tile(self):
-        return self._prob.get_tile_types().index(self._prob._border_tile)
+        return self._prob._border_tile
 
     """
-    Get the number of different type of tiles that are allowed in the observation
-
-    Returns:
-        int: the number of different tiles
-    """
-    def get_num_tiles(self):
-        return len(self._prob.get_tile_types())
-
-    """
-    Adjust the used parameters by the problem or representation
+    Update the environment observation based on the action
 
     Parameters:
-        change_percentage (float): a value between 0 and 1 that determine the
-        percentage of tiles the algorithm is allowed to modify. Having small
-        values encourage the agent to learn to react to the input screen.
-        **kwargs (dict(string,any)): the defined parameters depend on the used
-        representation and the used problem
-    """
-    def adjust_param(self, **kwargs):
-        if 'change_percentage' in kwargs:
-            percentage = min(1, max(0, kwargs.get('change_percentage')))
-            self._max_changes = max(int(percentage * self._prob._width * self._prob._height), 1)
-        self._max_iterations = self._max_changes * self._prob._width * self._prob._height
-        self._prob.adjust_param(**kwargs)
-        self._rep.adjust_param(**kwargs)
-        self.action_space = self._rep.get_action_space(self._prob._width, self._prob._height, self.get_num_tiles())
-        self.observation_space = self._rep.get_observation_space(self._prob._width, self._prob._height, self.get_num_tiles())
-        self.observation_space.spaces['heatmap'] = spaces.Box(low=0, high=self._max_changes, dtype=np.uint8, shape=(self._prob._height, self._prob._width))
-
-    """
-    Advance the environment using a specific action
-
-    Parameters:
-        action: an action that is used to advance the environment (same as action space)
+        action: the action to take based on the action_space
 
     Returns:
-        observation: the current observation after applying the action
-        float: the reward that happened because of applying that action
+        observation: the current observation after taking the action
+        float: the reward that happened because of the action
         boolean: if the problem eneded (episode is over)
-        dictionary: debug information that might be useful to understand what's happening
+        dictionary: debug information about the current step
     """
     def step(self, action):
         self._iteration += 1
@@ -156,7 +165,7 @@ class PcgrlEnv(gym.Env):
         info["reward"] = reward
         #return the values
         truncated = False
-        return observation, reward, done, info
+        return observation, reward, done, truncated, info
 
     """
     Render the current state of the environment
@@ -174,7 +183,7 @@ class PcgrlEnv(gym.Env):
         if mode == 'rgb_array':
             return img
         elif mode == 'human':
-            from gym.envs.classic_control import rendering
+            from gymnasium.envs.classic_control import rendering
             if self.viewer is None:
                 self.viewer = rendering.SimpleImageViewer()
             if not hasattr(img, 'shape'):

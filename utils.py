@@ -9,23 +9,12 @@ from gym_pcgrl import wrappers
 
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
-# from stable_baselines.bench import Monitor
-# from stable_baselines.common.vec_env import SubprocVecEnv, DummyVecEnv
-
-# from stable_baselines.common.monitor import Monitor
-# from stable_baselines.common.vec_env import SubprocVecEnv, DummyVecEnv
-
-
+import torch
+import torch.nn.functional as F
 
 import hashlib
 import struct
-import pandas as pd
-import np_utils
 
-
-import numpy as np
-import glob
-import os
 
 def merge_npz_files(file_pattern):
     """
@@ -296,4 +285,104 @@ def max_exp_idx(exp_name):
     return int(n)
 
 
+def calculate_entropy(logits):
+    """
+    Calculate the entropy of the predicted distribution from logits.
+    
+    Args:
+        logits: Output logits from the construction network
+        
+    Returns:
+        Entropy value
+    """
+    # Apply softmax to convert logits to probabilities
+    probabilities = F.softmax(logits, dim=1)
+    
+    # Calculate entropy: -sum(p * log(p))
+    # Add small epsilon to avoid log(0)
+    epsilon = 1e-10
+    entropy = -torch.sum(probabilities * torch.log(probabilities + epsilon), dim=1)
+    
+    return entropy
 
+def evaluate_solvability(state):
+    """
+    Evaluate how solvable the current state is.
+    This is a placeholder function - in a real implementation, you would use
+    domain-specific logic based on your PCGRL environment.
+    
+    Args:
+        state: The current grid state
+        
+    Returns:
+        Solvability score (0-100)
+    """
+    # Placeholder implementation - in a real scenario, you would:
+    # 1. Check if the level is structurally valid
+    # 2. Check if game-specific rules are satisfied (paths exist, etc.)
+    # 3. Run a solver to check if the level is completable
+    
+    # For demonstration, let's assume a simple metric:
+    # Higher percentage of valid tiles = higher solvability
+    
+    # Convert from one-hot to tile indices
+    if len(state.shape) > 2 and state.shape[-1] > 1:  # one-hot encoded
+        tile_indices = np.argmax(state, axis=-1)
+    else:  # already indices
+        tile_indices = state
+    
+    # Example: Assume tiles 0 and 1 are "valid" and others are "invalid"
+    valid_tiles = (tile_indices == 0) | (tile_indices == 1)
+    valid_percentage = np.mean(valid_tiles) * 100
+    
+    # Add some randomness for demonstration purposes
+    noise = np.random.normal(0, 5)  # Mean 0, std 5
+    solvability = np.clip(valid_percentage + noise, 0, 100)
+    
+    return solvability
+
+def evaluate_diversity(state):
+    """
+    Evaluate how diverse or interesting the current state is.
+    This is a placeholder function - in a real implementation, you would use
+    domain-specific metrics based on your PCGRL environment.
+    
+    Args:
+        state: The current grid state
+        
+    Returns:
+        Diversity score (0-100)
+    """
+    # Placeholder implementation - in a real scenario, you would:
+    # 1. Measure pattern variety 
+    # 2. Count different region types
+    # 3. Assess structural complexity
+    
+    # For demonstration, let's assume a simple metric:
+    # Higher entropy of tile distribution = higher diversity
+    
+    # Convert from one-hot to tile indices
+    if len(state.shape) > 2 and state.shape[-1] > 1:  # one-hot encoded
+        tile_indices = np.argmax(state, axis=-1)
+    else:  # already indices
+        tile_indices = state
+    
+    # Count occurrences of each tile type
+    unique, counts = np.unique(tile_indices, return_counts=True)
+    total_tiles = np.sum(counts)
+    
+    # Calculate tile distribution entropy
+    probabilities = counts / total_tiles
+    entropy = -np.sum(probabilities * np.log2(probabilities + 1e-10))
+    
+    # Normalize to 0-100 scale
+    # Assuming max possible entropy is log2(num_tile_types)
+    num_tile_types = len(unique)
+    max_entropy = np.log2(num_tile_types)
+    normalized_entropy = (entropy / max_entropy) * 100
+    
+    # Add some randomness for demonstration purposes
+    noise = np.random.normal(0, 5)  # Mean 0, std 5
+    diversity = np.clip(normalized_entropy + noise, 0, 100)
+    
+    return diversity

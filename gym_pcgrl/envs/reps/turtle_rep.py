@@ -1,6 +1,6 @@
 from gym_pcgrl.envs.reps.representation import Representation
 from PIL import Image
-from gym import spaces
+from gymnasium import spaces
 import numpy as np
 from collections import OrderedDict
 
@@ -29,8 +29,8 @@ class TurtleRepresentation(Representation):
     """
     def reset(self, width, height, prob):
         super().reset(width, height, prob)
-        self._x = self._random.randint(width)
-        self._y = self._random.randint(height)
+        self._x = self._random.randint(0, width-1)
+        self._y = self._random.randint(0, height-1)
 
     """
     Adjust the current used parameters
@@ -52,11 +52,11 @@ class TurtleRepresentation(Representation):
         num_tiles: the total number of the tile values
 
     Returns:
-        Discrete: the action space used by that turtle representation which
+        MultiDiscrete: the action space used by that turtle representation which
         correspond the movement direction and the tile values
     """
     def get_action_space(self, width, height, num_tiles):
-        return spaces.Discrete(len(self._dirs) + num_tiles)
+        return spaces.MultiDiscrete([len(self._dirs) + 1, num_tiles])
 
     """
     Get the observation space used by the turtle representation
@@ -67,8 +67,7 @@ class TurtleRepresentation(Representation):
         num_tiles: the total number of the tile values
 
     Returns:
-        Dict: the observation space used by that representation. "pos" Integer
-        x,y position for the current location. "map" 2D array of tile numbers
+        Dict: the observation space used by that representation
     """
     def get_observation_space(self, width, height, num_tiles):
         return spaces.Dict({
@@ -80,14 +79,13 @@ class TurtleRepresentation(Representation):
     Get the current representation observation object at the current moment
 
     Returns:
-        observation: the current observation at the current moment. "pos" Integer
-        x,y position for the current location. "map" 2D array of tile numbers
+        observation: the current observation at the current moment
     """
     def get_observation(self):
-        return OrderedDict({
+        return {
             "pos": np.array([self._x, self._y], dtype=np.uint8),
             "map": self._map.copy()
-        })
+        }
 
     """
     Update the turtle representation with the input action
@@ -100,8 +98,9 @@ class TurtleRepresentation(Representation):
     """
     def update(self, action):
         change = 0
-        if action < len(self._dirs):
-            self._x += self._dirs[action][0]
+        type, value = action
+        if type < len(self._dirs):
+            self._x += self._dirs[type][0]
             if self._x < 0:
                 if self._warp:
                     self._x += self._map.shape[1]
@@ -112,7 +111,7 @@ class TurtleRepresentation(Representation):
                     self._x -= self._map.shape[1]
                 else:
                     self._x = self._map.shape[1] - 1
-            self._y += self._dirs[action][1]
+            self._y += self._dirs[type][1]
             if self._y < 0:
                 if self._warp:
                     self._y += self._map.shape[0]
@@ -124,12 +123,13 @@ class TurtleRepresentation(Representation):
                 else:
                     self._y = self._map.shape[0] - 1
         else:
-            change = [0,1][self._map[self._y][self._x] != action - len(self._dirs)]
-            self._map[self._y][self._x] = action - len(self._dirs)
+            change = [0,1][self._map[self._y][self._x] != value]
+            self._map[self._y][self._x] = value
         return change, self._x, self._y
 
     """
-    Modify the level image with a red rectangle around the tile that the turtle is on
+    Modify the level image with a red rectangle around the tile that is
+    going to be modified
 
     Parameters:
         lvl_image (img): the current level_image without modifications

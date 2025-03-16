@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 # import gymnasium as gym
 import gym_pcgrl
 
@@ -40,17 +40,18 @@ class ToImage(gym.Wrapper):
         self.names = names
 
         self.observation_space = gym.spaces.Box(low=0, high=max_value,shape=(self.shape[0], self.shape[1], depth))
+        self._str_to_int_map = {v:k for k,v in enumerate(get_pcgrl_env(self.env)._prob.get_tile_types())}
 
     def step(self, action):
         action = get_action(action)
-        obs, reward, done, info = self.env.step(action)
+        obs, reward, terminated, truncated, info = self.env.step(action)
         obs = self.transform(obs)
-        return obs, reward, done, info
+        return obs, reward, terminated, truncated, info
 
     def reset(self, seed=None, options=None):
-        obs = self.env.reset()
+        obs, info = self.env.reset(seed=seed, options=options)
         obs = self.transform(obs)
-        return obs
+        return obs, info
 
     def transform(self, obs):
         final = np.empty([])
@@ -60,6 +61,20 @@ class ToImage(gym.Wrapper):
             else:
                 final = np.append(final, obs[n].reshape(self.shape[0], self.shape[1], -1), axis=2)
         return final
+    # def transform(self, obs):
+    #     map = obs[self.name]
+    #     x, y = obs['pos']
+
+    #     # Convert string map to integer map if needed
+    #     if isinstance(map[0][0], (str, np.str_)):
+    #         map = np.array([[self._str_to_int_map[tile] for tile in row] for row in map], dtype=np.int8)
+
+    #     #View Centering
+    #     padded = np.pad(map, self.pad, constant_values=self.pad_value)
+    #     cropped = padded[y:y+self.size, x:x+self.size]
+    #     obs[self.name] = cropped
+
+    #     return obs
 
 """
 Transform any object in the dictionary to one hot encoding
@@ -91,14 +106,14 @@ class OneHotEncoding(gym.Wrapper):
 
     def step(self, action):
         action = get_action(action)
-        obs, reward, done, info = self.env.step(action)
+        obs, reward, terminated, truncated, info = self.env.step(action)
         obs = self.transform(obs)
-        return obs, reward, done, info
+        return obs, reward, terminated, truncated, info
 
-    def reset(self):
-        obs = self.env.reset()
+    def reset(self, seed=None, options=None):
+        obs, info = self.env.reset(seed=seed, options=options)
         obs = self.transform(obs)
-        return obs
+        return obs, info
 
     def transform(self, obs):
         old = obs[self.name]
@@ -133,10 +148,11 @@ class ActionMap(gym.Wrapper):
         self.dim = self.unwrapped.dim = self.env.get_num_tiles()
        #self.action_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(h,w,dim))
         self.action_space = gym.spaces.Discrete(h*w*self.dim)
+        self._str_to_int_map = {v:k for k,v in enumerate(get_pcgrl_env(self.env)._prob.get_tile_types())}
 
-    def reset(self):
-        self.old_obs = self.env.reset()
-        return self.old_obs
+    def reset(self, seed=None, options=None):
+        self.old_obs, info = self.env.reset(seed=seed, options=options)
+        return self.old_obs, info
 
     def step(self, action):
        #y, x, v = np.unravel_index(np.argmax(action), action.shape)
@@ -144,16 +160,16 @@ class ActionMap(gym.Wrapper):
         if 'pos' in self.old_obs:
             o_x, o_y = self.old_obs['pos']
             if o_x == x and o_y == y:
-                obs, reward, done, info = self.env.step(v)
+                obs, reward, terminated, truncated, info = self.env.step(v)
             else:
                 o_v = self.old_obs['map'][o_y][o_x]
                 if self.one_hot:
                     o_v = o_v.argmax()
-                obs, reward, done, info = self.env.step(o_v)
+                obs, reward, terminated, truncated, info = self.env.step(o_v)
         else:
-            obs, reward, done, info = self.env.step([x, y, v])
+            obs, reward, terminated, truncated, info = self.env.step([x, y, v])
         self.old_obs = obs
-        return obs, reward, done, info
+        return obs, reward, terminated, truncated, info
 
 """
 Crops and centers the view around the agent and replace the map with cropped version
@@ -177,28 +193,35 @@ class Cropped(gym.Wrapper):
         self.name = name
         self.size = crop_size
         self.pad = crop_size//2
-        self.pad_value = pad_value
+        self._str_to_int_map = {v:k for k,v in enumerate(get_pcgrl_env(self.env)._prob.get_tile_types())}
+        # Convert pad_value to integer if it's a string
+        self.pad_value = self._str_to_int_map[pad_value] if isinstance(pad_value, str) else pad_value
 
         self.observation_space = gym.spaces.Dict({})
         for (k,s) in self.env.observation_space.spaces.items():
             self.observation_space.spaces[k] = s
         high_value = self.observation_space[self.name].high.max()
         self.observation_space.spaces[self.name] = gym.spaces.Box(low=0, high=high_value, shape=(crop_size, crop_size), dtype=np.uint8)
+        print(self._str_to_int_map)
 
     def step(self, action):
         action = get_action(action)
-        obs, reward, done, info = self.env.step(action)
+        obs, reward, terminated, truncated, info = self.env.step(action)
         obs = self.transform(obs)
-        return obs, reward, done, info
+        return obs, reward, terminated, truncated, info
 
-    def reset(self):
-        obs = self.env.reset()
+    def reset(self, seed=None, options=None):
+        obs, info = self.env.reset(seed=seed, options=options)
         obs = self.transform(obs)
-        return obs
+        return obs, info
 
     def transform(self, obs):
         map = obs[self.name]
         x, y = obs['pos']
+
+        # Convert string map to integer map if needed
+        if isinstance(map[0][0], (str, np.str_)):
+            map = np.array([[self._str_to_int_map[tile] for tile in row] for row in map], dtype=np.int8)
 
         #View Centering
         padded = np.pad(map, self.pad, constant_values=self.pad_value)
@@ -217,10 +240,11 @@ The wrappers we use for narrow and turtle experiments
 class CroppedImagePCGRLWrapper(gym.Wrapper):
     def __init__(self, game, crop_size, **kwargs):
         self.pcgrl_env = gym.make(game)#.env.env
+
         # import pdb; pdb.set_trace()
-        self.pcgrl_env.adjust_param(**kwargs)
+        self.pcgrl_env.unwrapped.adjust_param(**kwargs)
         # Cropping the map to the correct crop_size
-        env = Cropped(self.pcgrl_env, crop_size, self.pcgrl_env.get_border_tile(), 'map')
+        env = Cropped(self.pcgrl_env, crop_size, self.pcgrl_env.unwrapped.get_border_tile(), 'map')
         # Transform to one hot encoding if not binary
         if 'binary' not in game:
             env = OneHotEncoding(env, 'map')
@@ -229,6 +253,9 @@ class CroppedImagePCGRLWrapper(gym.Wrapper):
         # Final Wrapper has to be ToImage or ToFlat
         self.env = ToImage(env, flat_indices)
         gym.Wrapper.__init__(self, self.env)
+
+    def get_border_tile(self):
+        return self.pcgrl_env.unwrapped.get_border_tile()
 
 """
 Similar to the previous wrapper but the input now is the index in a 3D map (height, width, num_tiles) of the highest value

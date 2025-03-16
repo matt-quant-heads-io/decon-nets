@@ -2,8 +2,11 @@ stable-baselines3[extra]
 gym
 torch
 np_utils
-'shimmy>=2.0'
+shimmy
 einops
 wandb
 seaborn
 torchvision
+numpy
+tqdm
+matplotlib

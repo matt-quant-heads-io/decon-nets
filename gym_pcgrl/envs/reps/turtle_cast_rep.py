@@ -1,6 +1,6 @@
 from gym_pcgrl.envs.reps.turtle_rep import TurtleRepresentation
 from PIL import Image
-from gym import spaces
+from gymnasium import spaces
 import numpy as np
 from collections import OrderedDict
 
@@ -36,8 +36,8 @@ class TurtleCastRepresentation(TurtleRepresentation):
         boolean: True if the action change the map, False if nothing changed
     """
     def update(self, action):
-        type, value = action
         change = 0
+        type, value = action
         if type < len(self._dirs):
             self._x += self._dirs[type][0]
             if self._x < 0:

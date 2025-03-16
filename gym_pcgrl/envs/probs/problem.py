@@ -1,4 +1,4 @@
-from gym.utils import seeding
+from gymnasium.utils import seeding
 from PIL import Image
 
 """
@@ -36,14 +36,13 @@ class Problem:
         return seed
 
     """
-    Resets the problem to the initial state and save the start_stats from the starting map.
-    Also, it can be used to change values between different environment resets
+    Resets the problem to the initial state
 
     Parameters:
-        start_stats (dict(string,any)): the first stats of the map
+        stats (dictionary): the stats of the current map
     """
-    def reset(self, start_stats):
-        self._start_stats = start_stats
+    def reset(self, stats):
+        self._start_stats = stats
 
     """
     Get a list of all the different tile names
@@ -55,70 +54,65 @@ class Problem:
         raise NotImplementedError('get_tile_types is not implemented')
 
     """
-    Adjust the parameters for the current problem
+    Get a list of all the different tile values
 
-    Parameters:
-        width (int): change the width of the problem level
-        height (int): change the height of the problem level
-        probs (dict(string, float)): change the probability of each tile
-        intiialization, the names are the same as the tile types from get_tile_types
+    Returns:
+        string[]: that contains all the tile values
     """
-    def adjust_param(self, **kwargs):
-        self._width, self._height = kwargs.get('width', self._width), kwargs.get('height', self._height)
-        prob = kwargs.get('probs')
-        if prob is not None:
-            for t in prob:
-                if t in self._prob:
-                    self._prob[t] = prob[t]
+    def get_tile_values(self):
+        raise NotImplementedError('get_tile_values is not implemented')
 
     """
     Get the current stats of the map
 
     Returns:
-        dict(string,any): stats of the current map to be used in the reward, episode_over, debug_info calculations
+        dict(string,any): the current stats of the map
     """
     def get_stats(self, map):
-        raise NotImplementedError('get_graphics is not implemented')
+        raise NotImplementedError('get_stats is not implemented')
 
     """
-    Get the current game reward between two stats
+    Get the current reward based on the previous stats and the current ones
 
     Parameters:
-        new_stats (dict(string,any)): the new stats after taking an action
-        old_stats (dict(string,any)): the old stats before taking an action
+        old_stats (dict(string,any)): the old stats of the map
+        new_stats (dict(string,any)): the new stats of the map
+        changes (int): the number of tiles that have been changed
+        heatmap (int[][]): the number of times each tile has been modified
 
     Returns:
-        float: the current reward due to the change between the old map stats and the new map stats
+        float: the current reward
     """
-    def get_reward(self, new_stats, old_stats):
+    def get_reward(self, new_stats, old_stats, changes, heatmap):
         raise NotImplementedError('get_reward is not implemented')
 
     """
-    Uses the stats to check if the problem ended (episode_over) which means reached
-    a satisfying quality based on the stats
+    Uses the stats to check if the problem ended (episode_over)
 
     Parameters:
-        new_stats (dict(string,any)): the new stats after taking an action
-        old_stats (dict(string,any)): the old stats before taking an action
+        stats (dict(string,any)): the current stats of the map
+        changes (int): the number of tiles that have been changed
+        heatmap (int[][]): the number of times each tile has been modified
 
     Returns:
-        boolean: True if the level reached satisfying quality based on the stats and False otherwise
+        boolean: True if the level is over (episode_over)
     """
-    def get_episode_over(self, new_stats, old_stats):
-        raise NotImplementedError('get_graphics is not implemented')
+    def get_episode_over(self, stats, changes, heatmap):
+        raise NotImplementedError('get_episode_over is not implemented')
 
     """
     Get any debug information need to be printed
 
     Parameters:
-        new_stats (dict(string,any)): the new stats after taking an action
-        old_stats (dict(string,any)): the old stats before taking an action
+        stats (dict(string,any)): the current stats of the map
+        changes (int): the number of tiles that have been changed
+        heatmap (int[][]): the number of times each tile has been modified
 
     Returns:
         dict(any,any): is a debug information that can be used to debug what is
         happening in the problem
     """
-    def get_debug_info(self, new_stats, old_stats):
+    def get_debug_info(self, stats, changes, heatmap):
         raise NotImplementedError('get_debug_info is not implemented')
 
     """
@@ -154,3 +148,26 @@ class Problem:
             for x in range(len(map[y])):
                 lvl_image.paste(self._graphics[map[y][x]], ((x+self._border_size[0])*self._tile_size, (y+self._border_size[1])*self._tile_size, (x+self._border_size[0]+1)*self._tile_size, (y+self._border_size[1]+1)*self._tile_size))
         return lvl_image
+
+    """
+    Adjust the parameters for the current problem
+
+    Parameters:
+        width (int): change the width of the problem level
+        height (int): change the height of the problem level
+        probs (dict(string, float)): change the probability of each tile initialization
+        border_size (tuple(int, int)): change the border size of the level
+        border_tile (string): change the border tile type
+        tile_size (int): change the size of each tile in pixels
+    """
+    def adjust_param(self, **kwargs):
+        self._width = kwargs.get('width', self._width)
+        self._height = kwargs.get('height', self._height)
+        
+        probs = kwargs.get('probs')
+        if probs is not None:
+            self._prob = probs
+            
+        self._border_size = kwargs.get('border_size', self._border_size)
+        self._border_tile = kwargs.get('border_tile', self._border_tile)
+        self._tile_size = kwargs.get('tile_size', self._tile_size)

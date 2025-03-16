@@ -1,6 +1,6 @@
 from gym_pcgrl.envs.reps.narrow_rep import NarrowRepresentation
 from PIL import Image
-from gym import spaces
+from gymnasium import spaces
 import numpy as np
 from collections import OrderedDict
 
@@ -36,7 +36,7 @@ class NarrowCastRepresentation(NarrowRepresentation):
     def update(self, action):
         type, value = action
         change = 0
-        if type ==1 :
+        if type == 1:
             change += [0,1][self._map[self._y][self._x] != value]
             self._map[self._y][self._x] = value
         elif type == 2:

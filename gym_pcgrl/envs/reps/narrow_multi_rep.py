@@ -1,6 +1,6 @@
 from gym_pcgrl.envs.reps.narrow_rep import NarrowRepresentation
 from PIL import Image
-from gym import spaces
+from gymnasium import spaces
 import numpy as np
 from collections import OrderedDict
 
@@ -24,11 +24,11 @@ class NarrowMultiRepresentation(NarrowRepresentation):
     def get_action_space(self, width, height, num_tiles):
         action_space = []
         for i in range(9):
-            action_space.append(num_tiles + 1)
+            action_space.append(num_tiles+1)
         return spaces.MultiDiscrete(action_space)
 
     """
-    Update the narrow cast representation with the input action
+    Update the narrow multi representation with the input action
 
     Parameters:
         action: an action that is used to advance the environment (same as action space)

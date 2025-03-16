@@ -1,6 +1,6 @@
 from gym_pcgrl.envs.reps.representation import Representation
 from PIL import Image
-from gym import spaces
+from gymnasium import spaces
 # from gymnasium import spaces
 import numpy as np
 from collections import OrderedDict
@@ -27,9 +27,9 @@ class NarrowRepresentation(Representation):
         height (int): the generated map height
         prob (dict(int,float)): the probability distribution of each tile value
     """
-    def reset(self, width, height, prob):
-        super().reset(width, height, prob)
-        self._x = self._random.randint(0, width-1)
+    def reset(self, height, width, prob, target_map=None):
+        super().reset(width, height, prob, target_map=target_map)
+        self._x = self._random.randint(0,  width-1)
         self._y = self._random.randint(0, height-1)
 
     """
@@ -42,10 +42,10 @@ class NarrowRepresentation(Representation):
 
     Returns:
         Discrete: the action space used by that narrow representation which
-        correspond to which value for each tile type
+        correspond to which value from the tile types to place
     """
     def get_action_space(self, width, height, num_tiles):
-        return spaces.Discrete(num_tiles + 1)
+        return spaces.Discrete(num_tiles)
 
     """
     Get the observation space used by the narrow representation
@@ -56,12 +56,11 @@ class NarrowRepresentation(Representation):
         num_tiles: the total number of the tile values
 
     Returns:
-        Dict: the observation space used by that representation. "pos" Integer
-        x,y position for the current location. "map" 2D array of tile numbers
+        Dict: the observation space used by that representation
     """
     def get_observation_space(self, width, height, num_tiles):
         return spaces.Dict({
-            "pos": spaces.Box(low=np.array([0, 0]), high=np.array([width-1, height-1]), dtype=np.uint8),
+            "pos": spaces.Box(low=np.array([0, 0]), high=np.array([height-1, width-1]), dtype=np.uint8),
             "map": spaces.Box(low=0, high=num_tiles-1, dtype=np.uint8, shape=(height, width))
         })
 
@@ -69,14 +68,13 @@ class NarrowRepresentation(Representation):
     Get the current representation observation object at the current moment
 
     Returns:
-        observation: the current observation at the current moment. "pos" Integer
-        x,y position for the current location. "map" 2D array of tile numbers
+        observation: the current observation at the current moment
     """
     def get_observation(self):
-        return OrderedDict({
-            "pos": np.array([self._x, self._y], dtype=np.uint8),
+        return {
+            "pos": np.array([self._y, self._x], dtype=np.uint8),
             "map": self._map.copy()
-        })
+        }
 
     """
     Adjust the current used parameters
@@ -99,10 +97,9 @@ class NarrowRepresentation(Representation):
         boolean: True if the action change the map, False if nothing changed
     """
     def update(self, action):
-        change = 0
-        if action > 0:
-            change += [0,1][self._map[self._y][self._x] != action-1]
-            self._map[self._y][self._x] = action-1
+        change = [0,1][self._map[self._y][self._x] != action]
+        # print(f"self._map.shape: {self._map.shape}, self._y: {self._y}, self._x: {self._x}")
+        self._map[self._y][self._x] = action
         if self._random_tile:
             self._x = self._random.randint(0, self._map.shape[1]-1)
             self._y = self._random.randint(0, self._map.shape[0]-1)
