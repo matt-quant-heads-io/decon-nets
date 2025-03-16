@@ -69,6 +69,7 @@ CONFIG = {
 # Create required directories
 os.makedirs(CONFIG['warmup_dir'], exist_ok=True)
 os.makedirs(CONFIG['baseline_dir'], exist_ok=True)
+os.makedirs(CONFIG['common_baseline_dir'], exist_ok=True)
 os.makedirs(CONFIG['random_agent_dir'], exist_ok=True)
 os.makedirs(CONFIG['decon_dir'], exist_ok=True)
 
@@ -124,7 +125,7 @@ def generate_random_trajectory(env, difficulty, grid_size):
     trajectory_length = int(difficulty * grid_size[0] * grid_size[1])
     
     # Reset the environment to get initial state
-    state_pos_dict, info = env.unwrapped.reset(target_map="/home/jupyter-msiper/decon-nets/goal_maps/zelda/1.txt")
+    state_pos_dict, info = env.unwrapped.reset(target_map="./goal_maps/zelda/1.txt")
     y, x = state_pos_dict['pos'] 
     y, x = y.item(), x.item()
     state = state_pos_dict['map'] 
