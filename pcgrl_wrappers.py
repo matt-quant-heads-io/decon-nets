@@ -11,6 +11,7 @@ class NoiseStep:
     y_pos: int
     noise_action: int
     state_after: np.ndarray
+    repair_action: int
 
 class PCGRLNoiseWrapper(gym.Wrapper):
     """
@@ -34,8 +35,9 @@ class PCGRLNoiseWrapper(gym.Wrapper):
         self.grid_size = None
         self.num_tile_types = None
         self.current_trajectory: List[NoiseStep] = []
+        self.env = env
         
-    def reset(self):
+    def reset(self, target_map):
         """
         Reset the environment and add controlled noise.
         
@@ -43,7 +45,7 @@ class PCGRLNoiseWrapper(gym.Wrapper):
             Noisy observation
         """
         # Reset the environment to get a clean state
-        self.clean_state_tuple, info = self.env.unwrapped.reset()
+        self.clean_state_tuple, info = self.env.unwrapped.reset(target_map=target_map)
         
         # Determine grid size and number of tile types
         # import pdb; pdb.set_trace()
@@ -62,7 +64,7 @@ class PCGRLNoiseWrapper(gym.Wrapper):
         
         return noisy_state
     
-    def _add_noise(self, state):
+    def _add_noise(self, noise_pct, noise_fn=None):
         """
         Add noise to observation based on difficulty percentage.
         
@@ -73,30 +75,31 @@ class PCGRLNoiseWrapper(gym.Wrapper):
             Noisy state
         """
         # Create a copy to avoid modifying the original state
-        noisy_state = state.copy()
+        state = self.env.unwrapped._map["map"]
+        noisy_state = copy.deepcopy(state)
         
         # Calculate number of tiles to corrupt
         total_tiles = np.prod(self.grid_size)
-        num_noisy_tiles = int(total_tiles * self.difficulty_pct)
+        num_noisy_tiles = int(total_tiles * noise_pct)
         noisy_tiles_applied = 0
         
         # Randomly select positions to corrupt
         flat_indices = np.random.choice(total_tiles, num_noisy_tiles, replace=False)
         
-        # Convert flat indices to grid positions
-        x_indices = flat_indices // self.grid_size[1]
-        y_indices = flat_indices % self.grid_size[1]
-        
         # Apply random noise to selected positions
         while noisy_tiles_applied <=  num_noisy_tiles:
             # Store state before noise
-            state_before = noisy_state.copy()
+            state_before = copy.deepcopy(noisy_state.copy())
             
             # Get current position from environment representation
             x_pos, y_pos = self.env.unwrapped._rep._x, self.env.unwrapped._rep._y
+            repair_action = state_before[y_pos][x_pos]
             
             # Generate and apply noise
-            noise_action = np.random.randint(0, self.num_tile_types-1)
+            if noise_fn:
+                noise_action = noise_fn(state_before)
+            else:
+                noise_action = np.random.randint(0, self.num_tile_types-1)
             # random_tile = np.zeros(self.num_tile_types)
             # random_tile[noise_action] = 1
             print(noisy_state.shape)
@@ -108,13 +111,14 @@ class PCGRLNoiseWrapper(gym.Wrapper):
                 x_pos=x_pos,
                 y_pos=y_pos,
                 noise_action=noise_action,
-                state_after=noisy_state.copy()
+                state_after=copy.deepcopy(noisy_state),
+                repair_action=repair_action
             ))
             noisy_tiles_applied += 1
         
         return noisy_state
     
-    def step(self, action, position=None):
+    def step(self, action):
         """
         Take a step in the environment.
         
@@ -125,12 +129,8 @@ class PCGRLNoiseWrapper(gym.Wrapper):
         Returns:
             Tuple of (observation, reward, done, info)
         """
-        if position is not None:
-            # If position is provided, use it (for DeCon experiments)
-            return self.env.unwrapped.step((position, action))
-        else:
-            # Otherwise, use standard step
-            return self.env.unwrapped.step(action)
+        
+        return self.env.unwrapped.step(action)
     
     def get_clean_state(self):
         """

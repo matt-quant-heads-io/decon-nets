@@ -10,6 +10,7 @@ from models import ConstructionNetwork, DestructionNetwork
 from pcgrl_wrappers import PCGRLNoiseWrapper
 from .src.config import CONFIG
 
+
 class DeConTrainer:
     def __init__(self, env, grid_size, num_tile_types, device):
         self.env = env

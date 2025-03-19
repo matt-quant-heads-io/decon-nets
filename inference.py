@@ -150,7 +150,6 @@ def calc_diversity(test_lvls, goal_lvls, cuttoff):
 
     def get_subset_diversity(lvls, goal, cuttoff, distfn=hamm_dist):
         dists = direction_diversity(lvls, goal, distfn)
-        import pdb; pdb.set_trace()
         return lvls[dists >= cuttoff]
 
     def greedy_set_diversity(lvls, cuttoff, distfn=hamm_dist):
@@ -266,7 +265,7 @@ def infer(network, env, **kwargs):
         entropies_per_trial.append(sum(entropy_per_trial)/len(entropy_per_trial))
     
     # Calculate final metrics
-    goal_maps_path = "/home/jupyter-msiper/decon-nets/goal_maps/zelda"
+    goal_maps_path = "./goal_maps/zelda"
     list_of_paths_to_char_maps = [f"{goal_maps_path}/{gmap}" for gmap in os.listdir(goal_maps_path) if gmap.endswith(".txt")]
     goal_maps_as_int = get_int_maps_from_char_maps_paths(list_of_paths_to_char_maps)
     solve_percentage = round(float(solved) / float(trials) * 100, 2)
@@ -275,7 +274,6 @@ def infer(network, env, **kwargs):
     if len(solved_maps) == 0:
         return solve_percentage, 0.0, mean_entropy
  
-    # import pdb; pdb.set_trace()
     solved_maps_as_int = convert_char_maps_to_int_maps(solved_maps)
 
     diversity_score = calc_diversity(np.array(goal_maps_as_int), np.array(solved_maps_as_int), cuttoff) 

@@ -68,7 +68,7 @@ class PcgrlEnv(gym.Env):
         if 'change_percentage' in kwargs:
             percentage = min(1, max(0, kwargs.get('change_percentage')))
             self._max_changes = max(int(percentage * self._prob._width * self._prob._height), 1)
-        self._max_iterations = self._max_changes * self._prob._width * self._prob._height
+        self._max_iterations = self._max_changes * self._prob._width * self._prob._height*2
         
         # Pass parameters to problem and representation
         self._prob.adjust_param(**kwargs)

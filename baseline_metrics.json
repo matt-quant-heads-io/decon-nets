@@ -1,0 +1,29 @@
+{
+    "metrics_per_difficulty": {
+        "losses": {},
+        "entropies": {},
+        "action_correct_pcts": {},
+        "solve_percentages": {},
+        "diversity_scores": {},
+        "inference_entropies": {},
+        "epoch_times": {}
+    },
+    "config": {
+        "pcgrl_game": "zelda",
+        "pcgrl_representation": "narrow",
+        "initial_difficulty": 0.10,
+        "difficulty_levels": [0.10, 0.20, 0.40, 0.80],
+        "grid_size": [7, 11],
+        "crop_size": [22, 22],
+        "num_tile_types": 8,
+        "learning_rate_construction": 1e-4,
+        "learning_rate_destruction": 1e-4,
+        "num_state_action_pairs_per_difficulty": 200000,
+        "evaluate_every_num_epochs": 20,
+        "entropy_threshold": 0.03,
+        "num_epochs_per_difficulty": 60,
+        "batch_size": 32,
+        "inference_trials": 30,
+        "initial_dataset_size": 100
+    }
+} 
